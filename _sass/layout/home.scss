@@ -20,7 +20,7 @@
     background: none;
 
     %img-radius {
-      border-radius: $base-radius $base-radius 0 0;
+      border-radius: $base-radius $base-radius $base-radius $base-radius;
     }
 
     .preview-img {
@@ -47,13 +47,12 @@
       }
 
       .card-text.content {
-        @extend %muted;
 
         p {
           @extend %text-clip;
 
           line-height: 1.5;
-          margin: 0;
+          margin: 0 0 1rem 0;
         }
       }
 
@@ -131,7 +130,7 @@
 /* Tablet */
 @media all and (min-width: 768px) {
   %img-radius {
-    border-radius: 0 $base-radius $base-radius 0;
+    border-radius: $base-radius $base-radius $base-radius $base-radius;
   }
 
   #post-list {

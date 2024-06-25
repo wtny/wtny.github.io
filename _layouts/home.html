@@ -5,45 +5,75 @@ refactor: true
 
 {% include lang.html %}
 
+{% comment %}
+create an array of all_posts_to_show which is pinned posts, followed by up to max_ephemeral_posts default posts, then any remaining posts that have remain = true.
+note that this will be used without pagination for now (no paginate setting in config) but written so could use pagination someday if it ever supports tags. alternatively, could just write it myself -- wouldn't be too hard to write the little next/previous-page thing at the bottom of the page
+{% endcomment %}
+
+{% comment %}
+   we can display more than this based on posts having the "remain" attribute,
+   or the post having been created only a short while ago (e.g. less than 14 days prior from the time of building the static pages)
+{% endcomment %}
+{% assign min_num_unpinned_posts = 7 %}
+
+
 {% assign pinned = site.posts | where: 'pin', 'true' %}
 {% assign default = site.posts | where_exp: 'item', 'item.pin != true and item.hidden != true' %}
 
+{% assign all_posts_to_show = '' | split: '' %}
+{% assign all_posts_to_show = all_posts_to_show | concat: pinned %}
+
+
+{% for default_post in default %}
+   {% if forloop.index0 < min_num_unpinned_posts %}	  
+      {% assign all_posts_to_show = all_posts_to_show | push: default_post %}
+   {% else %}
+      {% comment %} push the post if it has remain = true or was created just a short while ago (approximating: hasn't had much time to be visible) {% endcomment %}
+      {% if default_post.remain == true %}
+         {% assign all_posts_to_show = all_posts_to_show | push: default_post %}
+      {% else %}
+         {% comment %}
+           any post made within the last period of time before building (e.g. 14 days) will be visible no matter what
+         {% endcomment %}
+
+         {% capture nowunix %}{{'now' | date: '%s'}}{% endcapture %}
+         {% capture posttime %}{{default_post.date | date: '%s'}}{% endcapture %}
+         
+         {% assign nowunix_number = nowunix | plus: 0 %}
+         {% assign posttime_number = posttime | plus: 0 %}
+
+         {% assign disappear_after_days = 14 %} {% comment %} can modify this! {% endcomment %}
+         {% assign disappear_after_seconds = disappear_after_days | times: 24 | times: 60 | times: 60 %}
+         {% assign disappear_time = nowunix_number | minus: disappear_after_seconds %}
+         
+         {% assign offset_num = posttime_number | minus: disappear_time %}
+
+         {% if offset_num > 0 %}
+            {% assign all_posts_to_show = all_posts_to_show | push: default_post %}
+         {% endif %}
+      {% endif %}
+   {% endif %}
+{% endfor %}
+
+
+{% comment %} the posts for this page {% endcomment %}
 {% assign posts = '' | split: '' %}
 
-<!-- Get pinned posts -->
-
 {% assign offset = paginator.page | minus: 1 | times: paginator.per_page %}
-{% assign pinned_num = pinned.size | minus: offset %}
+{% assign max_all_posts_index = all_posts_to_show.size | minus: 1 %}
 
-{% if pinned_num > 0 %}
-  {% for i in (offset..pinned.size) limit: pinned_num %}
-    {% assign posts = posts | push: pinned[i] %}
-  {% endfor %}
-{% else %}
-  {% assign pinned_num = 0 %}
-{% endif %}
 
-<!-- Get default posts -->
+{% for i in (offset..max_all_posts_index) limit: paginator.per_page %}
+   {% assign posts = posts | push: all_posts_to_show[i] %}
+{% endfor %}
 
-{% assign default_beg = offset | minus: pinned.size %}
-
-{% if default_beg < 0 %}
-  {% assign default_beg = 0 %}
-{% endif %}
-
-{% assign default_num = paginator.posts | size | minus: pinned_num %}
-{% assign default_end = default_beg | plus: default_num | minus: 1 %}
-
-{% if default_num > 0 %}
-  {% for i in (default_beg..default_end) %}
-    {% assign posts = posts | push: default[i] %}
-  {% endfor %}
-{% endif %}
 
 <div id="post-list" class="flex-grow-1 px-xl-1">
+
   {% for post in posts %}
+
     <article class="card-wrapper card">
-      <a href="{{ post.url | relative_url }}" class="post-preview row g-0 flex-md-row-reverse">
+      <div class="post-preview row g-0 flex-md-row-reverse">
         {% assign card_body_col = '12' %}
 
         {% if post.image %}
@@ -69,21 +99,51 @@ refactor: true
 
         <div class="col-md-{{ card_body_col }}">
           <div class="card-body d-flex flex-column">
-            <h1 class="card-title my-2 mt-md-0">{{ post.title }}</h1>
+             <div class="d-flex align-items-center"> <!-- New container for title and thumbtack -->
+               {% if post.pin %}
+                  <div class="pin ms-1">
+                     <i class="fas fa-thumbtack fa-fw"></i>
+                     <span>{{ site.data.locales[lang].post.pin_prompt }}</span>
+                  </div>
+                  <h1 class="card-title my-2 mt-md-0" style="margin-left: 10px;">{{ post.title }}</h1>
+               {% elsif post.remain %}
+                  <div class="pin ms-1">
+                     <i class="fas fa-bookmark fa-fw"></i>
+                  </div>
+                  <h1 class="card-title my-2 mt-md-0" style="margin-left: 10px;">{{ post.title }}</h1>
+	       {% else %}
+	       <h1 class="card-title my-2 mt-md-0">{{ post.title }}</h1>
+               {% endif %}
 
-            <div class="card-text content mt-0 mb-3">
-              <p>
-                {% include no-linenos.html content=post.content %}
-                {{ content | markdownify | strip_html | truncate: 200 | escape }}
-              </p>
             </div>
 
+
+            {% assign content_no_whitespace = post.content | strip %}
+             {% if content_no_whitespace != "" %}
+                {% if post.content contains site.excerpt_separator %}
+                   <p>
+                      {% include no-linenos.html content=post.content %}
+	              {{ post.excerpt }}
+		      <a href="{{ post.url | relative_url }}" class="read-more">read more</a>
+                   </p>
+                {% else %}
+                   <div class="card-text content mt-0">
+                      {% include no-linenos.html content=post.content %}
+                      {{ content | markdownify }}
+                   </div>
+                {% endif %}
+	    {% endif %}
+
+            {% comment %}
             <div class="post-meta flex-grow-1 d-flex align-items-end">
               <div class="me-auto">
-                <!-- posted date -->
-                <i class="far fa-calendar fa-fw me-1"></i>
-                {% include datetime.html date=post.date lang=lang %}
 
+	        {% unless post.pin %}
+                  <!-- posted date -->
+                  <i class="far fa-calendar fa-fw me-1"></i>
+                  {% include datetime.html date=post.date lang=lang %}
+		  {% endunless %}
+		
                 <!-- categories -->
                 {% if post.categories.size > 0 %}
                   <i class="far fa-folder-open fa-fw me-1"></i>
@@ -96,20 +156,16 @@ refactor: true
                 {% endif %}
               </div>
 
-              {% if post.pin %}
-                <div class="pin ms-1">
-                  <i class="fas fa-thumbtack fa-fw"></i>
-                  <span>{{ site.data.locales[lang].post.pin_prompt }}</span>
-                </div>
-              {% endif %}
             </div>
+	    {% endcomment %}
             <!-- .post-meta -->
           </div>
           <!-- .card-body -->
         </div>
-      </a>
-    </article>
+      </div>
+     </article>
   {% endfor %}
+    
 </div>
 <!-- #post-list -->
 
